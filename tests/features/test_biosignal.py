@@ -66,11 +66,12 @@ def test_biosignal_storage_and_schema(tmp_path, monkeypatch):
 
 
 @require_mne
-def test_biosignal_local_raw_and_bytes(tmp_path):
+@pytest.mark.parametrize("name", ["sample_raw.fif", "sub-01_task-rest_eeg.fif"])
+def test_biosignal_local_raw_and_bytes(tmp_path, name):
     import mne
 
     raw = _make_raw()
-    fif_path = tmp_path / "sample_raw.fif"
+    fif_path = tmp_path / name
     raw.save(str(fif_path), overwrite=True, verbose="ERROR")
 
     ds = Dataset.from_dict({"biosignal": [str(fif_path)]}, features=Features({"biosignal": Biosignal()}))
@@ -143,6 +144,13 @@ def test_biosignal_bids_formats_and_embed(tmp_path, fmt, ext, datatype):
     ds = Dataset.from_dict({"biosignal": [str(bp.fpath)]}, features=Features({"biosignal": Biosignal()}))
     decoded = ds[0]["biosignal"]
     assert decoded.info["line_freq"] == 50.0 and list(decoded.annotations.description) == ["stimulus"]
+
+    channels = bp.copy().update(suffix="channels", extension=".tsv").fpath
+    original = channels.read_text()
+    channels.write_text(original.replace("\ttype\t", "\tinvalid_type\t", 1))
+    with pytest.raises(KeyError, match="type"):
+        _ = ds[0]["biosignal"]
+    channels.write_text(original)
 
     saved_path = tmp_path / "saved_ds"
     ds.save_to_disk(str(saved_path))

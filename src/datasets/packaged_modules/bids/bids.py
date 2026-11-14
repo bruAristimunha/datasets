@@ -104,6 +104,7 @@ class Bids(datasets.ArrowBasedBuilder):
     def _split_generators(self, dl_manager):
         if not datasets.config.MNE_BIDS_AVAILABLE:
             raise ImportError("To load BIDS datasets, please install 'mne-bids'.")
+        from mne_bids import get_entities_from_fname
         from mne_bids.config import ALLOWED_DATATYPE_EXTENSIONS, ALLOWED_PATH_ENTITIES_SHORT, EPHY_ALLOWED_DATATYPES
 
         cfg = self.config
@@ -111,10 +112,10 @@ class Bids(datasets.ArrowBasedBuilder):
             ext for dt in EPHY_ALLOWED_DATATYPES for ext in ALLOWED_DATATYPE_EXTENSIONS[dt] if ext != ".pdf"
         ]
         filters = {
-            "sub": cfg.subjects,
-            "ses": cfg.sessions,
+            "subject": cfg.subjects,
+            "session": cfg.sessions,
             "task": cfg.tasks,
-            "acq": cfg.acquisitions,
+            "acquisition": cfg.acquisitions,
             "run": cfg.runs,
             "datatype": cfg.datatypes or [*EPHY_ALLOWED_DATATYPES, *NIFTI_DATATYPES],
             "suffix": cfg.suffixes,
@@ -129,21 +130,21 @@ class Bids(datasets.ArrowBasedBuilder):
             for f in dict.fromkeys(DIRECTORY_FORMAT_FILE.sub(r"\1", f) for f in files):
                 stem, _, ext = os.path.basename(f).partition(".")
                 *pairs, suffix = stem.split("_")
-                entities = dict(pair.split("-", 1) for pair in pairs if "-" in pair)
+                entities = get_entities_from_fname(f, on_error="ignore")
                 # the recording, its datatype directory, [session directory,] subject directory, BIDS root
                 dirs = [f]
-                for _ in range(3 + ("ses" in entities)):
+                for _ in range(3 + (entities["session"] is not None)):
                     dirs.append(os.path.dirname(dirs[-1]))
                 row = {
                     "nifti" if f.endswith(NIFTI_EXTENSIONS) else "biosignal": {"path": f, "bytes": None},
-                    **{ALLOWED_PATH_ENTITIES_SHORT.get(k, k): v for k, v in entities.items() if k != "split"},
+                    **{k: v for k, v in entities.items() if k != "split" and v is not None},
                     "datatype": os.path.basename(dirs[1]),
                     "suffix": suffix,
                     "extension": f".{ext}",
                 }
-                if any({**entities, **row}.get(key) not in values for key, values in filters.items()):
+                if any(row.get(key) not in values for key, values in filters.items()):
                     continue
-                if entities.get("acq") == "crosstalk" or int(entities.get("split", 1)) > 1:
+                if entities["acquisition"] == "crosstalk" or int(entities["split"] or 1) > 1:
                     continue  # MEG calibration file, or a split FIF continuation (the recording is read from split-01)
                 recordings[split].append((row, set(pairs), dirs))
 

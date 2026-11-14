@@ -302,7 +302,7 @@ def test_bids_mri_with_eeg_and_sidecar_inheritance(bids_root, tmp_path):
     image = nib.Nifti1Image(np.zeros((2, 2, 2, 3), dtype=np.int16), np.eye(4))
     for rel in [
         "sub-01/ses-01/anat/sub-01_ses-01_T1w.nii.gz",
-        "sub-01/ses-01/func/sub-01_ses-01_task-rest_echo-1_bold.nii.gz",
+        "sub-01/ses-01/func/sub-01_ses-01_task-rest_acq-high_echo-1_rec-norm_bold.nii.gz",
         "derivatives/prep/sub-01/ses-01/func/sub-01_ses-01_task-rest_desc-clean_bold.nii.gz",
     ]:
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -311,7 +311,7 @@ def test_bids_mri_with_eeg_and_sidecar_inheritance(bids_root, tmp_path):
     (root / "sub-01/ses-01/eye_tracker/sub-01_ses-01_task-rest_et.edf").write_bytes(b"x")
     # inheritance: the root sidecar applies to every rest bold run, the run sidecar overrides it
     (root / "task-rest_bold.json").write_text(json.dumps({"RepetitionTime": 2.0, "TaskName": "rest"}))
-    (root / "sub-01/ses-01/func/sub-01_ses-01_task-rest_echo-1_bold.json").write_text(
+    (root / "sub-01/ses-01/func/sub-01_ses-01_task-rest_acq-high_echo-1_rec-norm_bold.json").write_text(
         json.dumps({"RepetitionTime": 1.5, "EchoTime": 0.03})
     )
     (root / "sub-01/ses-01/func/sub-01_ses-01_bold.json").write_text('["n/a"]')  # invalid sidecar: ignored
@@ -323,12 +323,15 @@ def test_bids_mri_with_eeg_and_sidecar_inheritance(bids_root, tmp_path):
     bold = rows["01", "bold", "rest"]
     assert bold["nifti"].shape == (2, 2, 2, 3) and bold["biosignal"] is None
     assert bold["echo"] == "1" and bold["datatype"] == "func" and bold["age"] == 24
+    assert bold.get("rec", bold.get("recording")) == "norm"
     assert bold["metadata"] == {"RepetitionTime": 1.5, "TaskName": "rest", "EchoTime": 0.03}
     assert rows["01", "T1w", None]["metadata"] == {}
     eeg = rows["01", "eeg", "rest"]
     assert isinstance(eeg["biosignal"], mne.io.BaseRaw) and eeg["nifti"] is None
     assert eeg["metadata"]["PowerLineFrequency"] == 50.0
-    assert load_dataset("bids", data_dir=str(root), datatypes="func", split="train")["suffix"] == ["bold"]
+    assert load_dataset(
+        "bids", data_dir=str(root), datatypes="func", sessions="01", acquisitions="high", split="train"
+    )["suffix"] == ["bold"]
 
 
 @require_mne_bids

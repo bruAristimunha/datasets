@@ -10,7 +10,6 @@ import pyarrow as pa
 
 from .. import config
 from ..download.download_config import DownloadConfig
-from ..utils import logging
 from ..utils.file_utils import is_local_path, xbasename, xopen
 from .bio_sequence import _cast_to_bytes_path_struct, _resolve_token
 
@@ -19,9 +18,6 @@ if TYPE_CHECKING:
     import mne
 
     from .features import FeatureType
-
-
-logger = logging.get_logger(__name__)
 
 
 @dataclass
@@ -178,16 +174,16 @@ class Biosignal:
                 tmp_path = Path(tmpdir) / fname
                 tmp_path.write_bytes(bytes_)
                 raw = mne.io.read_raw(tmp_path, preload=True, verbose="ERROR")
-        elif config.MNE_BIDS_AVAILABLE and fname.startswith("sub-"):
+        elif (
+            config.MNE_BIDS_AVAILABLE
+            and fname.startswith("sub-")
+            and fname.split("_", 1)[0] in Path(path).parent.parts
+        ):
             import mne_bids
 
-            try:
-                # get_bids_path_from_fname until mne-bids>=0.21 accepts path-like directly (mne-tools/mne-bids#1696)
-                bids_path = mne_bids.get_bids_path_from_fname(path, check=False, verbose="ERROR")
-                raw = mne_bids.read_raw_bids(bids_path, verbose="ERROR")
-            except Exception as err:
-                logger.warning(f"Reading {path} without its BIDS sidecars: mne_bids.read_raw_bids failed ({err}).")
-                raw = mne.io.read_raw(path, verbose="ERROR")
+            # get_bids_path_from_fname until mne-bids>=0.21 accepts path-like directly (mne-tools/mne-bids#1696)
+            bids_path = mne_bids.get_bids_path_from_fname(path, check=False, verbose="ERROR")
+            raw = mne_bids.read_raw_bids(bids_path, verbose="ERROR")
         else:
             raw = mne.io.read_raw(path, verbose="ERROR")
         return raw
